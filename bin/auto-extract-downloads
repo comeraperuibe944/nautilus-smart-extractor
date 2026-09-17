@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# auto-extract-downloads: Monitora Downloads via inotify e extrai automaticamente
+# Projetado com foco absoluto em economia de bateria (0% CPU em repouso).
+
+set -euo pipefail
+
+DOWNLOADS_DIR="$(xdg-user-dir DOWNLOAD 2>/dev/null || echo "$HOME/Downloads")"
+
+if [ ! -d "$DOWNLOADS_DIR" ]; then
+    mkdir -p "$DOWNLOADS_DIR"
+fi
+
+declare -A LAST_PROCESSED
+
+# inotifywait fica suspenso pelo kernel até ocorrer um evento real.
+# Não monitora recursivamente para não reagir aos arquivos extraídos nas subpastas.
+exec inotifywait -m -e moved_to,close_write --format "%e %w%f" "$DOWNLOADS_DIR" 2>/dev/null | while read -r EVENT FILEPATH; do
+    [ -f "$FILEPATH" ] || continue
+
+    # Ignora downloads em andamento ou temporários
+    case "$FILEPATH" in
+        *.crdownload|*.tmp|*.part|*.download)
+            continue
+            ;;
+    esac
+
+    # Filtra apenas formatos compactados
+    IS_ARCHIVE=0
+    case "$FILEPATH" in
+        *.tar.gz|*.tar.bz2|*.tar.xz|*.tar.zst|*.tar.lz|*.tar.lzma|*.tar.lzo|\
+        *.tgz|*.tbz|*.tbz2|*.txz|*.tzst|\
+        *.zip|*.7z|*.rar|*.tar|*.iso|*.gz|*.bz2|*.xz|*.zst|*.cbz|*.cbr)
+            IS_ARCHIVE=1
+            ;;
+    esac
+
+    [ $IS_ARCHIVE -eq 1 ] || continue
+
+    # Debounce de 3s para evitar execuções duplicadas
+    NOW=$(date +%s)
+    PREV=${LAST_PROCESSED["$FILEPATH"]:-0}
+    if [ $((NOW - PREV)) -lt 3 ]; then
+        continue
+    fi
+    LAST_PROCESSED["$FILEPATH"]=$NOW
+
+    # Executa a extração em background e continua
+    "$HOME/.local/bin/extract-archive" "$FILEPATH" &
+done

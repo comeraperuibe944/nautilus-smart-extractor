@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# extract-archive: Extrai arquivos compactados em pastas com o nome do arquivo
+
+set -u
+
+get_stem() {
+    local base="$1"
+    case "$base" in
+        *.tar.gz)   echo "${base%.tar.gz}" ;;
+        *.tar.bz2)  echo "${base%.tar.bz2}" ;;
+        *.tar.xz)   echo "${base%.tar.xz}" ;;
+        *.tar.zst)  echo "${base%.tar.zst}" ;;
+        *.tar.lz)   echo "${base%.tar.lz}" ;;
+        *.tar.lzma) echo "${base%.tar.lzma}" ;;
+        *.tar.lzo)  echo "${base%.tar.lzo}" ;;
+        *.tgz)      echo "${base%.tgz}" ;;
+        *.tbz)      echo "${base%.tbz}" ;;
+        *.tbz2)     echo "${base%.tbz2}" ;;
+        *.txz)      echo "${base%.txz}" ;;
+        *.tzst)     echo "${base%.tzst}" ;;
+        *.*)        echo "${base%.*}" ;;
+        *)          echo "$base" ;;
+    esac
+}
+
+extract_file() {
+    local filepath="$1"
+    [ -f "$filepath" ] || return 1
+
+    local dir
+    dir="$(dirname "$filepath")"
+    local base
+    base="$(basename "$filepath")"
+    local stem
+    stem="$(get_stem "$base")"
+    local dest_dir="$dir/$stem"
+
+    mkdir -p "$dest_dir"
+
+    local success=0
+
+    # 1. unar (rápido, silencioso, sem interface gráfica)
+    if command -v unar >/dev/null 2>&1; then
+        if unar -f -D -o "$dest_dir" "$filepath" </dev/null >/dev/null 2>&1; then
+            success=1
+        fi
+    fi
+
+    # 2. 7z (fallback robusto)
+    if [ $success -eq 0 ] && command -v 7z >/dev/null 2>&1; then
+        if 7z x -y "-o$dest_dir" "$filepath" </dev/null >/dev/null 2>&1; then
+            success=1
+        fi
+    fi
+
+    # 3. file-roller (fallback com suporte a senha gráfica se necessário)
+    if [ $success -eq 0 ] && command -v file-roller >/dev/null 2>&1; then
+        if file-roller --extract-to="$dest_dir" --force "$filepath" >/dev/null 2>&1; then
+            success=1
+        fi
+    fi
+
+    if [ $success -eq 1 ]; then
+        if command -v notify-send >/dev/null 2>&1; then
+            notify-send -a "Arquivos" -i package-x-generic "Extração concluída" "Arquivo extraído na pasta:\n$stem/"
+        fi
+        return 0
+    else
+        return 1
+    fi
+}
+
+for arg in "$@"; do
+    extract_file "$arg"
+done

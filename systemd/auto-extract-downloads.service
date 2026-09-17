@@ -1,0 +1,12 @@
+[Unit]
+Description=Auto Extract Downloads Inotify Service
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/auto-extract-downloads
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
